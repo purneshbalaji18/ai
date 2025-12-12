@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Monitor</title>
+    <style>
+        body { background-color: #000; color: #0f0; font-family: 'Courier New', monospace; text-align: center; margin: 0; padding: 20px; }
+        .monitor-box { border: 4px solid #333; display: inline-block; position: relative; }
+        video { width: 640px; height: 480px; display: block; background: #111; }
+        .status-overlay { position: absolute; top: 10px; left: 10px; font-size: 24px; font-weight: bold; text-shadow: 2px 2px #000; }
+        
+        .safe { border-color: #0f0; color: #0f0; }
+        .warning { border-color: yellow; color: yellow; }
+        .danger { border-color: red; color: red; animation: blink 1s infinite; }
+        
+        @keyframes blink { 50% { opacity: 0.5; } }
+        canvas { display: none; } /* Hidden canvas for snapshotting */
+    </style>
+</head>
+<body>
+    <h1>🛡️ CLOUD SENTINEL</h1>
+    <p>User: {{ name }} | SOS: {{ contact }}</p>
+
+    <div id="ui-box" class="monitor-box safe">
+        <video id="videoElement" autoplay playsinline muted></video>
+        <div class="status-overlay" id="statusText">STATUS: SAFE</div>
+    </div>
+    
+    <div style="margin-top:20px">
+        <span>Score: <span id="scoreVal">0</span></span> | 
+        <span>Audio Lvl: <span id="audioVal">0</span></span> | 
+        <span>Weapons: <span id="weaponVal">None</span></span>
+    </div>
+
+    <canvas id="snapshotCanvas" width="480" height="360"></canvas>
+
+    <script>
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('snapshotCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiBox = document.getElementById('ui-box');
+        const statusText = document.getElementById('statusText');
+        
+        // Audio Vars
+        let audioContext, microphone, analyser, dataArray;
+        let currentVol = 0;
+
+        // 1. START CAMERA & MICROPHONE
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 480, height: 360 }, 
+                    audio: true 
+                });
+                video.srcObject = stream;
+
+                // Setup Audio Analysis
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                microphone = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                microphone.connect(analyser);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                // Start Loop
+                setInterval(processFrame, 500); // Send to server every 0.5s
+                setInterval(analyzeAudio, 100);  // Check audio often
+
+            } catch (err) {
+                alert("Error accessing camera/mic: " + err);
+            }
+        }
+
+        // 2. ANALYZE AUDIO (Client Side)
+        function analyzeAudio() {
+            if (!analyser) return;
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for(let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+            currentVol = Math.round(sum / dataArray.length); // 0 to 255 roughly
+            document.getElementById('audioVal').innerText = currentVol;
+        }
+
+        // 3. SEND IMAGE TO SERVER
+        function processFrame() {
+            // Draw video frame to canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Convert to blob (JPG)
+            canvas.toBlob(blob => {
+                const formData = new FormData();
+                formData.append('image', blob);
+                formData.append('audio_level', currentVol);
+
+                // Send to Python
+                fetch('/api/analyze', { method: 'POST', body: formData })
+                    .then(res => res.json())
+                    .then(data => updateUI(data))
+                    .catch(err => console.error("Server Error:", err));
+            }, 'image/jpeg', 0.8);
+        }
+
+        // 4. UPDATE UI
+        function updateUI(data) {
+            statusText.innerText = "STATUS: " + data.status;
+            document.getElementById('scoreVal').innerText = data.score;
+            document.getElementById('weaponVal').innerText = data.weapons.join(', ') || "None";
+
+            // Update Colors
+            uiBox.className = "monitor-box"; // reset
+            if (data.status === 'SAFE') uiBox.classList.add('safe');
+            else if (data.status === 'WARNING') uiBox.classList.add('warning');
+            else uiBox.classList.add('danger');
+        }
+
+        startCamera();
+    </script>
+</body>
+</html>

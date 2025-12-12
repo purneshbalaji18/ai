@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Safety Shield</title>
+    <style>
+        body { font-family: sans-serif; background-color: #1a1a1a; color: white; text-align: center; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .status-box { padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; font-size: 1.5em; }
+        .safe { background-color: #2ecc71; color: black; }
+        .warning { background-color: #f1c40f; color: black; }
+        .danger { background-color: #e74c3c; color: white; animation: blink 1s infinite; }
+        img { width: 100%; border: 3px solid #333; border-radius: 8px; }
+        .stats { display: flex; justify-content: space-around; margin-top: 20px; background: #333; padding: 10px; border-radius: 8px; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ AI Safety Shield</h1>
+        
+        <div id="status-header" class="status-box safe">INITIALIZING...</div>
+
+        <img src="{{ url_for('video_feed') }}" alt="Live Feed">
+
+        <div class="stats">
+            <div>Score: <span id="score">0</span></div>
+            <div>Weapons: <span id="weapons">None</span></div>
+            <div>Audio: <span id="audio">0</span></div>
+        </div>
+    </div>
+
+    <script>
+        // Poll the backend API every 500ms to update text without refreshing page
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                const header = document.getElementById('status-header');
+                const score = document.getElementById('score');
+                const weapons = document.getElementById('weapons');
+                const audio = document.getElementById('audio');
+
+                // Update Text
+                header.innerText = data.status;
+                score.innerText = data.score;
+                weapons.innerText = data.weapons.length > 0 ? data.weapons.join(', ') : "None";
+                audio.innerText = data.audio_level;
+
+                // Update Colors
+                header.className = 'status-box'; // reset
+                if (data.status === 'SAFE') header.classList.add('safe');
+                else if (data.status === 'WARNING') header.classList.add('warning');
+                else header.classList.add('danger');
+
+            } catch (e) {
+                console.error("Connection lost", e);
+            }
+        }, 500);
+    </script>
+</body>
+</html>
